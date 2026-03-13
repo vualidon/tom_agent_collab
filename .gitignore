@@ -1,0 +1,13 @@
+external/
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
+.eggs/
+*.pt
+*.bin
+checkpoints/
+results/
+.env
+*.ipynb_checkpoints/

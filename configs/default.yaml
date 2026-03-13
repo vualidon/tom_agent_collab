@@ -1,0 +1,42 @@
+# Model
+model_name: "Qwen/Qwen3-1.7B"
+max_seq_length: 512
+
+# Prefix tuning
+num_virtual_tokens: 20
+prefix_projection: true
+encoder_hidden_size: 1024
+
+# Training
+batch_size: 4
+gradient_accumulation_steps: 8
+learning_rate: 3.0e-4
+num_epochs: 3
+warmup_ratio: 0.1
+fp16: true
+gradient_checkpointing: true
+optimizer: "adamw_8bit"
+
+# Inference
+temperature: 0.0
+sc_temperature: 0.7
+
+# Logit-to-Dirichlet
+logit_transform: "center_min"
+evidence_fn: "relu"
+
+# Fusion
+conflict_epsilon: 1.0e-8
+degenerate_vacuity_threshold: 0.95
+
+# Thresholds
+tau_u: 0.7
+tau_delta: 0.5
+
+# Evaluation
+seeds: [42, 123, 456]
+bootstrap_resamples: 1000
+
+# Colab
+save_to_drive: true
+checkpoint_every_epoch: true
