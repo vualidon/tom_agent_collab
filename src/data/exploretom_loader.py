@@ -5,7 +5,7 @@ import re
 def load_exploretom_dataset() -> List[Dict]:
     """Load ExploreToM from HuggingFace datasets."""
     from datasets import load_dataset
-    ds = load_dataset("facebook/ExploreToM", split="test")
+    ds = load_dataset("facebook/ExploreToM", split="train")
     return [dict(row) for row in ds]
 
 
