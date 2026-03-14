@@ -74,6 +74,9 @@ class PerspectiveDataset(Dataset):
 
 def create_prefix_model(config: PAECConfig, base_model):
     """Wrap base model with prefix tuning."""
+    # Prefix tuning is incompatible with gradient checkpointing (PEFT limitation)
+    if getattr(base_model, "is_gradient_checkpointing", False):
+        base_model.gradient_checkpointing_disable()
     peft_config = PrefixTuningConfig(
         task_type=TaskType.CAUSAL_LM,
         num_virtual_tokens=config.num_virtual_tokens,
