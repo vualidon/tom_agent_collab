@@ -10,10 +10,14 @@ def load_exploretom_dataset() -> List[Dict]:
 
 
 def filter_by_order(examples: List[Dict], orders: List[int] = None) -> List[Dict]:
-    """Filter to specific ToM order questions."""
+    """Filter to specific ToM order questions.
+
+    ExploreToM uses 'qprop=nth_order' as the column name.
+    Values: -1 (memory), 0 (baseline), 1 (first-order), 2 (second-order).
+    """
     if orders is None:
         orders = [1, 2]
-    return [e for e in examples if e.get("nth_order") in orders]
+    return [e for e in examples if e.get("qprop=nth_order") in orders]
 
 
 def extract_agents_from_story(story: str) -> List[str]:
@@ -56,6 +60,8 @@ def extract_perspective_pairs_exploretom(example: Dict) -> List[Dict]:
     if len(agents) < 2:
         return []
 
+    nth_order = example.get("qprop=nth_order", 1)
+
     pairs = [
         {
             "perspective": "self",
@@ -63,7 +69,7 @@ def extract_perspective_pairs_exploretom(example: Dict) -> List[Dict]:
             "question": f"From {agents[0]}'s perspective: {question}",
             "answer": answer,
             "agent": agents[0],
-            "nth_order": example.get("nth_order", 1),
+            "nth_order": nth_order,
         },
         {
             "perspective": "partner",
@@ -71,7 +77,7 @@ def extract_perspective_pairs_exploretom(example: Dict) -> List[Dict]:
             "question": f"From {agents[1]}'s perspective: {question}",
             "answer": answer,
             "agent": agents[1],
-            "nth_order": example.get("nth_order", 1),
+            "nth_order": nth_order,
         },
     ]
     return pairs

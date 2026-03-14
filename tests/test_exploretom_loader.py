@@ -8,14 +8,14 @@ from src.data.exploretom_loader import (
 
 def test_filter_by_order():
     examples = [
-        {"nth_order": -1, "question": "factual"},
-        {"nth_order": 0, "question": "state tracking"},
-        {"nth_order": 1, "question": "1st order belief"},
-        {"nth_order": 2, "question": "2nd order belief"},
+        {"qprop=nth_order": -1, "question": "factual"},
+        {"qprop=nth_order": 0, "question": "state tracking"},
+        {"qprop=nth_order": 1, "question": "1st order belief"},
+        {"qprop=nth_order": 2, "question": "2nd order belief"},
     ]
     filtered = filter_by_order(examples, orders=[1, 2])
     assert len(filtered) == 2
-    assert all(e["nth_order"] in [1, 2] for e in filtered)
+    assert all(e["qprop=nth_order"] in [1, 2] for e in filtered)
 
 
 def test_extract_agents_from_story():
@@ -39,7 +39,7 @@ def test_extract_perspective_pairs():
         "infilled_story": "Anne put the apple on the table. Bob left the room. Anne moved the apple to the shelf.",
         "question": "Does Bob know where the apple is?",
         "expected_answer": "no",
-        "nth_order": 1,
+        "qprop=nth_order": 1,
     }
     pairs = extract_perspective_pairs_exploretom(example)
     assert len(pairs) == 2
@@ -53,7 +53,7 @@ def test_extract_pairs_too_few_agents():
         "infilled_story": "Something happened with no clear agents doing actions.",
         "question": "What happened?",
         "expected_answer": "nothing",
-        "nth_order": 1,
+        "qprop=nth_order": 1,
     }
     pairs = extract_perspective_pairs_exploretom(example)
     # May return empty if no agents found

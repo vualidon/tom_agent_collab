@@ -4,72 +4,123 @@ from typing import List, Dict, Tuple
 import random
 
 
-def parse_tomi_story(text: str) -> Dict:
-    """Parse a ToMi story text into structured data."""
-    lines = text.strip().split("\n")
-    question = lines[-1]
-    story = "\n".join(lines[:-1])
+def split_tomi_stories(text: str) -> List[str]:
+    """Split a ToMi file into individual story-question blocks.
 
-    agents = []
+    Each block starts with "1 " and ends with a question line containing tabs.
+    Stories are NOT separated by blank lines — they're consecutive numbered blocks.
+    """
+    blocks = []
+    current_lines = []
+
+    for line in text.strip().split("\n"):
+        if not line.strip():
+            continue
+        # Detect start of new block: line starts with "1 "
+        if re.match(r"^1\s", line) and current_lines:
+            blocks.append("\n".join(current_lines))
+            current_lines = []
+        current_lines.append(line)
+
+    if current_lines:
+        blocks.append("\n".join(current_lines))
+
+    return blocks
+
+
+def parse_tomi_story(text: str) -> Dict:
+    """Parse a ToMi story block into structured data.
+
+    Format: numbered lines like "1 Oliver entered the porch."
+    Last line: "9 Where will X look for Y?\tanswer\t1"
+    """
+    lines = text.strip().split("\n")
+
+    # Last line has the question + answer (tab-separated)
+    last_line = lines[-1]
+    parts = last_line.split("\t")
+    question_raw = parts[0]
+    answer = parts[1].strip() if len(parts) >= 2 else ""
+
+    # Strip line numbers from all lines: "1 Oliver entered..." -> "Oliver entered..."
+    story_lines = []
     for line in lines[:-1]:
+        stripped = re.sub(r"^\d+\s+", "", line)
+        story_lines.append(stripped)
+    question = re.sub(r"^\d+\s+", "", question_raw)
+
+    story = "\n".join(story_lines)
+
+    # Extract agent names from enter/exit actions
+    agents = []
+    for line in story_lines:
         match = re.match(r"^(\w+) (entered|exited)", line)
         if match and match.group(1) not in agents:
             agents.append(match.group(1))
 
-    return {"story": story, "question": question, "agents": agents}
+    return {"story": story, "question": question, "answer": answer, "agents": agents}
 
 
 def parse_tomi_trace(trace_line: str) -> Dict:
-    """Parse a ToMi trace line for ground truth."""
-    parts = trace_line.strip().split("\t")
-    if len(parts) >= 6:
+    """Parse a ToMi trace line for metadata.
+
+    Trace format is comma-separated: action1,action2,...,question_type,story_type
+    e.g.: "enter_agent_0,...,first_order_1_tom,false_belief"
+    """
+    parts = trace_line.strip().split(",")
+    if len(parts) >= 2:
+        story_type = parts[-1]  # e.g. "false_belief", "true_belief"
+        question_type = parts[-2]  # e.g. "first_order_1_tom", "memory", "reality"
         return {
-            "story_type": parts[0],
-            "order": int(parts[1]),
-            "agent": parts[2],
-            "object": parts[3],
-            "belief_location": parts[4],
-            "true_location": parts[5],
+            "story_type": story_type,
+            "question_type": question_type,
         }
     return {}
 
 
 def extract_perspective_pairs(story_data: Dict) -> List[Dict]:
-    """Create self-perspective and partner-perspective training examples.
-
-    Preserves the original ToMi question and uses trace data for ground truth.
-    """
+    """Create self-perspective and partner-perspective training examples."""
     agents = story_data.get("agents", [])
     if len(agents) < 2:
         return []
 
-    original_question = story_data.get("question", "")
-    queried_agent = story_data.get("agent", agents[0])
-    belief_location = story_data.get("belief_location", "")
-    true_location = story_data.get("true_location", "")
+    question = story_data.get("question", "")
+    answer = story_data.get("answer", "")
     story = story_data.get("story", "")
+    story_type = story_data.get("story_type", "unknown")
+
+    if not answer:
+        return []
+
+    # Determine which agent is being asked about from the question
+    queried_agent = agents[0]
+    for agent in agents:
+        if agent in question:
+            queried_agent = agent
+            break
+
+    other_agent = agents[1] if queried_agent == agents[0] else agents[0]
 
     pairs = []
 
-    # Self perspective: the agent being asked about — answer is their belief
+    # Self perspective: the agent being asked about
     pairs.append({
         "perspective": "self",
         "story": story,
-        "question": original_question,
-        "answer": belief_location if belief_location else true_location,
+        "question": question,
+        "answer": answer,
         "agent": queried_agent,
-        "story_type": story_data.get("story_type", "unknown"),
+        "story_type": story_type,
     })
 
-    # Partner perspective: the other agent — answer is what they would know
-    other_agent = agents[1] if queried_agent == agents[0] else agents[0]
+    # Partner perspective: the other agent's viewpoint
     pairs.append({
         "perspective": "partner",
         "story": story,
         "question": f"Where does {other_agent} think the object is?",
-        "answer": true_location if true_location else belief_location,
+        "answer": answer,
         "agent": other_agent,
-        "story_type": story_data.get("story_type", "unknown"),
+        "story_type": story_type,
     })
 
     return pairs
@@ -94,13 +145,15 @@ def load_tomi_dataset(
         trace_path = txt_path.replace(".txt", ".trace")
 
         with open(txt_path) as f:
-            stories_raw = f.read().strip().split("\n\n")
+            content = f.read()
+        story_blocks = split_tomi_stories(content)
+
         trace_lines = []
         if os.path.exists(trace_path):
             with open(trace_path) as f:
                 trace_lines = f.read().strip().split("\n")
 
-        for i, story_text in enumerate(stories_raw):
+        for i, story_text in enumerate(story_blocks):
             if not story_text.strip():
                 continue
             parsed = parse_tomi_story(story_text)
