@@ -26,6 +26,7 @@ class PAECConfig:
     fp16: bool = True
     gradient_checkpointing: bool = True
     optimizer: str = "adamw_8bit"
+    num_workers: int = 0
 
     # Inference
     temperature: float = 0.0

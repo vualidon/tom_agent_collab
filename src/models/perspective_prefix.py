@@ -118,7 +118,13 @@ def train_prefix(
 
     # Dataset and DataLoader
     dataset = PerspectiveDataset(filtered, tokenizer, max_length=config.max_seq_length)
-    dataloader = DataLoader(dataset, batch_size=config.batch_size, shuffle=True)
+    dataloader = DataLoader(
+        dataset,
+        batch_size=config.batch_size,
+        shuffle=True,
+        num_workers=getattr(config, "num_workers", 0),
+        pin_memory=torch.cuda.is_available(),
+    )
 
     # Optimizer
     if config.optimizer == "adamw_8bit":
