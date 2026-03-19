@@ -147,21 +147,56 @@ def train_prefix(
     os.makedirs(output_dir, exist_ok=True)
 
     for epoch in range(config.num_epochs):
-        total_loss = 0
+        total_loss = 0.0
+        valid_loss_steps = 0
+        skipped_no_target = 0
+        nonfinite_losses = 0
+        accum_counter = 0
         for step, batch in enumerate(tqdm(dataloader, desc=f"Epoch {epoch+1}")):
             batch = {k: v.to(model.device) for k, v in batch.items()}
+            if (batch["labels"] != -100).sum().item() == 0:
+                skipped_no_target += 1
+                continue
             outputs = model(**batch)
-            loss = outputs.loss / config.gradient_accumulation_steps
-            loss.backward()
-            total_loss += loss.item()
+            raw_loss = outputs.loss
+            if not torch.isfinite(raw_loss):
+                nonfinite_losses += 1
+                optimizer.zero_grad(set_to_none=True)
+                accum_counter = 0
+                if nonfinite_losses > config.max_nonfinite_losses:
+                    raise RuntimeError(
+                        f"Too many non-finite losses ({nonfinite_losses}) while training {perspective} prefix."
+                    )
+                continue
 
-            if (step + 1) % config.gradient_accumulation_steps == 0:
+            nonfinite_losses = 0
+            loss = raw_loss / config.gradient_accumulation_steps
+            loss.backward()
+            total_loss += float(raw_loss.item())
+            valid_loss_steps += 1
+            accum_counter += 1
+
+            if accum_counter >= config.gradient_accumulation_steps:
+                if config.max_grad_norm > 0:
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), config.max_grad_norm)
                 optimizer.step()
                 scheduler.step()
-                optimizer.zero_grad()
+                optimizer.zero_grad(set_to_none=True)
+                accum_counter = 0
 
-        avg_loss = total_loss / max(len(dataloader), 1)
+        if accum_counter > 0:
+            if config.max_grad_norm > 0:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), config.max_grad_norm)
+            optimizer.step()
+            scheduler.step()
+            optimizer.zero_grad(set_to_none=True)
+
+        avg_loss = total_loss / max(valid_loss_steps, 1)
+        if not torch.isfinite(torch.tensor(avg_loss)):
+            raise RuntimeError(f"Epoch {epoch+1} produced non-finite avg_loss for {perspective} prefix.")
         print(f"Epoch {epoch+1}: avg_loss = {avg_loss:.4f}")
+        if skipped_no_target:
+            print(f"  Skipped batches with no target tokens: {skipped_no_target}")
 
         # Report truncation statistics
         if hasattr(dataset, 'truncated_count') and dataset.truncated_count > 0:

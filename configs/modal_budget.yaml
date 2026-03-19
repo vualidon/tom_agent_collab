@@ -1,0 +1,48 @@
+# Budget-safe config for Modal A10 one-seed prefix training.
+# Batch/grad accumulation are still selected by preflight in modal_train_and_push.py.
+
+# Model
+model_name: "Qwen/Qwen3-1.7B"
+max_seq_length: 512
+
+# Prefix tuning
+num_virtual_tokens: 20
+prefix_projection: true
+encoder_hidden_size: 1024
+
+# Training
+batch_size: 4
+gradient_accumulation_steps: 8
+learning_rate: 1.0e-4
+num_epochs: 3
+warmup_ratio: 0.1
+fp16: true
+gradient_checkpointing: false
+optimizer: "adamw"
+max_grad_norm: 1.0
+max_nonfinite_losses: 3
+num_workers: 4
+
+# Inference
+temperature: 0.0
+sc_temperature: 0.7
+
+# Logit-to-Dirichlet
+logit_transform: "center_min"
+evidence_fn: "relu"
+
+# Fusion
+conflict_epsilon: 1.0e-8
+degenerate_vacuity_threshold: 0.95
+
+# Thresholds
+tau_u: 0.7
+tau_delta: 0.5
+
+# Evaluation
+seeds: [42]
+bootstrap_resamples: 1000
+
+# Colab/Checkpointing behavior
+save_to_drive: false
+checkpoint_every_epoch: true

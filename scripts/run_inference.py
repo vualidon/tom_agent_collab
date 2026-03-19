@@ -11,10 +11,16 @@ Usage:
 """
 import argparse
 import gc
+import sys
 import torch
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.config import PAECConfig
-from src.models.model_loader import load_base_model, load_model_with_prefix
+from src.models.model_loader import load_base_model, load_model_with_prefix, resolve_device
 from src.inference.perspective_runner import PerspectiveRunner
 from src.baselines.standard_prompting import predict_standard
 from src.baselines.simtom_prompting import predict_simtom
@@ -88,14 +94,42 @@ def main():
     parser.add_argument("--config", default="configs/default.yaml")
     parser.add_argument("--prefix_self", default="", help="Path to self prefix checkpoint")
     parser.add_argument("--prefix_partner", default="", help="Path to partner prefix checkpoint")
+    parser.add_argument("--hf_repo_id", default="", help="HF repo id with prefix_self/prefix_partner folders")
+    parser.add_argument("--hf_revision", default="main", help="HF revision to download from")
+    parser.add_argument("--device", default="auto", choices=["auto", "mps", "cpu", "cuda"])
     args = parser.parse_args()
 
     config = PAECConfig.from_yaml(args.config)
     runner = PerspectiveRunner(config)
+    resolved_device = resolve_device(args.device)
+    print(f"Using device: {resolved_device}")
+
+    prefix_self = args.prefix_self
+    prefix_partner = args.prefix_partner
+
+    if args.hf_repo_id:
+        try:
+            from huggingface_hub import snapshot_download
+        except ImportError as exc:
+            raise ImportError(
+                "huggingface_hub is required when using --hf_repo_id. "
+                "Install with: pip install huggingface_hub"
+            ) from exc
+
+        snapshot_dir = snapshot_download(repo_id=args.hf_repo_id, revision=args.hf_revision)
+        prefix_self = str(Path(snapshot_dir) / "prefix_self")
+        prefix_partner = str(Path(snapshot_dir) / "prefix_partner")
+        print(f"Downloaded prefixes from HF repo: {args.hf_repo_id}")
+        print(f"  prefix_self={prefix_self}")
+        print(f"  prefix_partner={prefix_partner}")
 
     # Load base model
     print("Loading base model...")
-    base_model, tokenizer = load_base_model(config)
+    base_model, tokenizer = load_base_model(
+        config,
+        device=resolved_device,
+        use_gradient_checkpointing=False,
+    )
 
     for i, example in enumerate(DEMO_EXAMPLES):
         print(f"\n{'='*60}")
@@ -111,7 +145,7 @@ def main():
         run_paec(runner, base_model, base_model, tokenizer, example, use_prompt=True)
 
     # Phase 2: prefix-based PAEC
-    if args.prefix_self and args.prefix_partner:
+    if prefix_self and prefix_partner:
         print(f"\n\n{'#'*60}")
         print("Phase 2: Prefix-based PAEC")
         print(f"{'#'*60}")
@@ -122,8 +156,18 @@ def main():
             torch.cuda.empty_cache()
 
         print("Loading prefix models...")
-        model_self, tokenizer = load_model_with_prefix(config, args.prefix_self)
-        model_partner, _ = load_model_with_prefix(config, args.prefix_partner)
+        model_self, tokenizer = load_model_with_prefix(
+            config,
+            prefix_self,
+            device=resolved_device,
+            use_gradient_checkpointing=False,
+        )
+        model_partner, _ = load_model_with_prefix(
+            config,
+            prefix_partner,
+            device=resolved_device,
+            use_gradient_checkpointing=False,
+        )
 
         for i, example in enumerate(DEMO_EXAMPLES):
             print(f"\n{'='*60}")
@@ -131,7 +175,10 @@ def main():
             print(f"{'='*60}")
             run_paec(runner, model_self, model_partner, tokenizer, example, use_prompt=False)
     else:
-        print("\n(Skipping Phase 2 — no prefix paths provided. Use --prefix_self and --prefix_partner)")
+        print(
+            "\n(Skipping Phase 2 — no prefix paths provided. Use --prefix_self/--prefix_partner "
+            "or --hf_repo_id)"
+        )
 
     print("\nDone!")
 

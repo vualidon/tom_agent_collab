@@ -26,6 +26,8 @@ class PAECConfig:
     fp16: bool = True
     gradient_checkpointing: bool = True
     optimizer: str = "adamw_8bit"
+    max_grad_norm: float = 1.0
+    max_nonfinite_losses: int = 3
     num_workers: int = 0
 
     # Inference
